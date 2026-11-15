@@ -1,13 +1,23 @@
 import asyncio
+import json
 from urllib.parse import urlsplit
 import httpx
+from pydantic import BaseModel, HttpUrl, ValidationError
 from protego import Protego
+from trafilatura import extract
 
-# some test links, need to load properly or handle dynamic lists later
+# test links for now, need to load properly or handle dynamic lists later
 WIKI_LINKS = [
     "https://en.wikipedia.org/wiki/Outer_space",
     "https://en.wikipedia.org/wiki/Artificial_intelligence",
 ]
+
+# strict guard schema - making sure we don't pass garbage data into our pipeline
+class Structure(BaseModel):
+    text: str
+    title: str | None = "Untitled"
+    source: HttpUrl
+    date: str | None = None
 
 def get_header(url: str):
     # wiki gets mad if our user agent is too basic, give them contact info
@@ -16,7 +26,7 @@ def get_header(url: str):
     return {"User-Agent": "Mozilla/5.0"}
 
 async def fetch_data(client: httpx.AsyncClient, url: str):
-    # simple retry loop for 429 rate limits because wikipedia yells at us if we go too fast
+    # retry loop for 429 rate limits because wikipedia yells at us if we go too fast
     for attempt in range(3):
         try:
             r = await client.get(url, headers=get_header(url), timeout=10.0)
@@ -31,7 +41,7 @@ async def fetch_data(client: httpx.AsyncClient, url: str):
     return None
 
 async def main():
-    print("starting polite crawler test...")
+    print("starting crawler and extractor test...")
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         # check robots.txt first to be polite and ethical
@@ -43,12 +53,22 @@ async def main():
             if rp.can_fetch(path, "CoolBot"):
                 print(f"allowed to fetch: {link}")
                 
-                # fetch the raw page for now
-                # need to pass this raw html into trafilatura next to clean out ads/menus
                 page_res = await fetch_data(client, link)
                 if page_res and page_res.status_code == 200:
-                    print(f"successfully fetched raw html for {link}, length: {len(page_res.text)}")
-                    # need to add pydantic validation here soon so we don't process broken data
+                    # noise remover: pass raw html into trafilatura to strip ads/nav menus
+                    raw_extracted = extract(page_res.text, output_format="json", with_metadata=True)
+                    if raw_extracted:
+                        data = json.loads(raw_extracted)
+                        if not data.get("source"):
+                            data["source"] = link
+                        
+                        # strict guard: force data through pydantic model before accepting it
+                        try:
+                            validated_item = Structure.model_validate(data)
+                            print(f"successfully validated article: '{validated_item.title}' ({len(validated_item.text)} chars)")
+                            # need to add token chunking with tiktoken and langchain next for rag
+                        except ValidationError as e:
+                            print(f"pydantic validation failed for {link}: {e}")
             else:
                 print(f"blocked by robots.txt: {link}")
 
