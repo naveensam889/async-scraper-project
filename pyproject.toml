@@ -7,7 +7,10 @@ authors = [
     { name = "Naveen Sam", email = "naveensam889@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "httpx>=0.28.1",
+    "protego>=0.7.0",
+]
 
 [project.scripts]
 async-scraper-project = "async_scraper_project:main"
