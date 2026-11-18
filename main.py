@@ -13,9 +13,8 @@ from trafilatura import extract
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("RAGPipeline")
+logger = logging.getLogger(__name__)
 
 class ValidLink(BaseModel):
     links: list[HttpUrl] = Field(..., description="List of target URLs to process")
@@ -142,10 +141,10 @@ def validator(content: list[dict]) -> list[Structure]:
 
 def chunking(validated_sites: list[Structure], chunk_size: int = 500, chunk_overlap: int = 50) -> dict[str, list[str]]:
     """Chunks validated text using token lengths and maps them by source URL."""
-    tokenizer = tiktoken.get_encoding("cl100k_base")
+    tokeniser = tiktoken.get_encoding("cl100k_base")
 
     def token_length_function(text: str) -> int:
-        return len(tokenizer.encode(text))
+        return len(tokeniser.encode(text))
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
